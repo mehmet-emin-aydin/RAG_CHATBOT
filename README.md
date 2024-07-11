@@ -1,6 +1,3 @@
-# RAG_CHATBOT
-Free-to-use ChatBot built with the Retrieval Augmented Generation Architecture
-
 ---
 title: FREE RAG
 emoji: 🏢
@@ -12,3 +9,8 @@ app_file: app.py
 pinned: false
 license: apache-2.0
 ---
+
+# RAG_CHATBOT
+Free-to-use ChatBot built with the Retrieval Augmented Generation Architecture
+
+
