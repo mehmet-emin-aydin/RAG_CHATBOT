@@ -10,19 +10,20 @@ from docx import Document
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import ChatGoogleGenerativeAI
 import pickle
 from datetime import datetime
 import io
 from dotenv import load_dotenv
+from groq import Groq
 
 log_data = [] 
 
+client = Groq(api_key="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")
 
 class User:
     def __init__(self, username):
         self.username = username
-        self.llm = "gemini-pro"
+        self.llm = "llama3-8b-8192"
         self.embedder = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
@@ -73,8 +74,6 @@ def _create_embeddings_and_save(user: User, chunks: any) -> int:
 
 
 def ask_question(user: User, question: str, api_key: str, vector_store : FAISS) -> tuple[str, int]:
-
-
     if api_key:
         os.environ["GOOGLE_API_KEY"] = api_key
     else:
@@ -82,26 +81,36 @@ def ask_question(user: User, question: str, api_key: str, vector_store : FAISS) 
         if not is_loaded:
             return "API key not found.", 400
 
-    llm = ChatGoogleGenerativeAI(model=user.llm, temperature=0, max_output_tokens=256, top_k=40, top_p=0.8)
     docs = vector_store.similarity_search(question)
     retrieved_chunks = docs[0].page_content + docs[1].page_content + docs[2].page_content
-    system_message = "Figure out the answer of the question by the given information pieces. ALWAYS answer with the language of the question."
-    prompt = system_message + "Question: " + question + " Context: " + retrieved_chunks
+    prompt ="Question: " + question + " Context: " + retrieved_chunks
+
     try:
-        response = llm.invoke(prompt)
+        response = get_completion(prompt, model=user.llm)
     except Exception:
         return "Wrong API key.", 400
 
-    answer = response.content + "  **<Most Related Chunk>**  " + retrieved_chunks
-    _log(user, question, system_message, retrieved_chunks, response.content)
+    answer = response + "\n\n  **<Most Related Chunk>**  \n\n" + retrieved_chunks
+    _log(user, question, retrieved_chunks, response)
     return answer, 200
 
 
-def _log(user: User, question: str, system_message: str, retrieved_chunks: str, answer: str):
+def get_completion(prompt, model="llama3-8b-8192"):
+    messages = [{"role": "system", "content": "Answer the following question based on the information given in the content. Since you are an easy-to-understand assistant, all your output should be only the answer to the question and should be strictly in the same language as the question."},
+                {"role": "user", "content": prompt}]
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=0,
+    )
+    return response.choices[0].message.content.strip()
+
+
+def _log(user: User, question: str, retrieved_chunks: str, answer: str):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_message = (
         f"{timestamp}, Username: {user.username}, Question: {question}, "
-        f"LLM: {user.llm}, Embedder: {user.embedder}, System Message: {system_message}, "
+        f"LLM: {user.llm}, Embedder: {user.embedder}, "
         f"Retrieved Texts: {retrieved_chunks}, Answer: {answer}\n"
     )
     log_data.append(log_message)
