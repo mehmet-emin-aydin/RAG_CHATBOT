@@ -15,10 +15,10 @@ from datetime import datetime
 import io
 from dotenv import load_dotenv
 from groq import Groq
-
+load_dotenv()
 log_data = [] 
 
-client = Groq(api_key="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")
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 class User:
     def __init__(self, username):
@@ -27,12 +27,12 @@ class User:
         self.embedder = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
-def upload_documents(user: User, files) -> tuple[str, int]:
+def upload_documents(user: User, files) -> tuple[str, int, FAISS]:
     text = _extract_text_from_document(files)
     chunks = _chunk_text(text)
-    status_code = _create_embeddings_and_save(user, chunks)
+    status_code , vector_store = _create_embeddings_and_save(user, chunks)
     if status_code == 200:
-        return "Document uploaded successfully.", 200
+        return "Document uploaded successfully.", 200 , vector_store
     else:
         return "Failed to upload document.", 500
 
@@ -66,43 +66,46 @@ def _chunk_text(text: str) -> list[str]:
     return text_splitter.split_text(text)
 
 
-def _create_embeddings_and_save(user: User, chunks: any) -> int:
+def _create_embeddings_and_save(user: User, chunks: any) -> tuple[int, FAISS]:
     embeddings = HuggingFaceEmbeddings(model_name=user.embedder)
     vector_store = FAISS.from_texts(chunks, embeddings, metadatas=[{"source": f"{user.username}:{i}"} for i in range(len(chunks))])
-    st.session_state.vector_store = vector_store
-    return 200
+    
+    return 200, vector_store
 
 
-def ask_question(user: User, question: str, api_key: str, vector_store : FAISS) -> tuple[str, int]:
-    if api_key:
-        os.environ["GOOGLE_API_KEY"] = api_key
-    else:
-        is_loaded = load_dotenv()
-        if not is_loaded:
-            return "API key not found.", 400
+def ask_question(user: User, question: str, vector_store : FAISS) -> tuple[str, int]:
 
     docs = vector_store.similarity_search(question)
     retrieved_chunks = docs[0].page_content + docs[1].page_content + docs[2].page_content
-    prompt ="Question: " + question + " Context: " + retrieved_chunks
+    prompt = f'Question: "{question}"\nContext: "{retrieved_chunks}"'
 
     try:
-        response = get_completion(prompt, model=user.llm)
-    except Exception:
-        return "Wrong API key.", 400
+        response = get_completion(prompt)
+    except Exception as e:
+        return f"LLM connection failed.{e}", 400
 
-    answer = response + "\n\n  **<Most Related Chunk>**  \n\n" + retrieved_chunks
+    answer = f'{response}\n\n**<Most Related Chunk>**\n\n{retrieved_chunks}'
     _log(user, question, retrieved_chunks, response)
     return answer, 200
 
 
 def get_completion(prompt, model="llama3-8b-8192"):
-    messages = [{"role": "system", "content": "Answer the following question based on the information given in the content. Since you are an easy-to-understand assistant, all your output should be only the answer to the question and should be strictly in the same language as the question."},
-                {"role": "user", "content": prompt}]
+    messages = [
+        {
+            "role": "system", 
+            "content": "Based on the context provided, answer the question as an easy-to-understand assistant. Ensure that the answer is concise, directly addresses the question, and is in the same language as the question."
+        },
+        {
+            "role": "user", 
+            "content": prompt
+        }
+    ]
     response = client.chat.completions.create(
         model=model,
         messages=messages,
         temperature=0,
     )
+
     return response.choices[0].message.content.strip()
 
 
@@ -142,8 +145,8 @@ def upload_document():
             st.write(file_details)
 
         user = User(username=username)
-        response, status_code = upload_documents(user, uploaded_files)
-
+        response, status_code , vector_store= upload_documents(user, uploaded_files)
+        st.session_state.vector_store = vector_store
         if status_code == 200:
             st.success(response)
         else:
@@ -152,7 +155,6 @@ def upload_document():
 
 def ask_question_ui(vector_store : FAISS):
     username = st.text_input("Enter a username (just something that represents you):")
-    api_key = st.text_input("Add your Google API key. It is free. Key acquisition video: [https://www.youtube.com/watch?v=brCkpzAD0gc]: (If you do not trust you can download and use the app in your local too)", type="password")
     question = st.text_area("Enter the question you want to ask in your document (the more detailed your question, the more accurate an answer you will get):")
 
     if st.button("Ask"):
@@ -162,7 +164,7 @@ def ask_question_ui(vector_store : FAISS):
             st.warning("Please enter a username.")
         else:
             user = User(username=username)
-            answer, status_code = ask_question(user, question, api_key, vector_store)
+            answer, status_code = ask_question(user, question, vector_store)
             
             if status_code == 200:
                 st.success("Answer: " + answer)
@@ -170,4 +172,6 @@ def ask_question_ui(vector_store : FAISS):
                 st.error("Error: " + answer)
 
 if __name__ == "__main__":
+    if "vector_store" not in st.session_state:
+        st.session_state.vector_store = {}
     main()
