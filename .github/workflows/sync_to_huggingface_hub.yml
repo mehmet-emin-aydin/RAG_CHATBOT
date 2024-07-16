@@ -17,4 +17,4 @@ jobs:
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push --force https://eminAydin:$HF_TOKEN@huggingface.co/spaces/eminAydin/RAG_CHATBOT main
+        run: git push --force https://eminAydin:$HF_TOKEN@huggingface.co/spaces/AILabHF/RAG_CHATBOT_v1 main
