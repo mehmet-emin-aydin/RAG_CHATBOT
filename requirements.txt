@@ -12,5 +12,6 @@ requests
 langchain-community
 docx
 groq
+together
 # UI
 streamlit==1.33.0
