@@ -14,11 +14,13 @@ import pickle
 from datetime import datetime
 import io
 from dotenv import load_dotenv
-from groq import Groq
+# from groq import Groq
+from together import Together
 load_dotenv()
 log_data = [] 
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+client = Together(api_key=os.getenv("TOGETHER_API_KEY"))
 
 class User:
     def __init__(self, username):
@@ -88,8 +90,8 @@ def ask_question(user: User, question: str, vector_store : FAISS) -> tuple[str, 
     _log(user, question, retrieved_chunks, response)
     return answer, 200
 
-
-def get_completion(prompt, model="llama3-8b-8192"):
+# Function to get completion with batching\n",
+def get_completion(prompt, model="meta-llama/Llama-3.3-70B-Instruct-Turbo-Free"):
     messages = [
         {
             "role": "system", 
@@ -107,6 +109,7 @@ def get_completion(prompt, model="llama3-8b-8192"):
     )
 
     return response.choices[0].message.content.strip()
+
 
 
 def _log(user: User, question: str, retrieved_chunks: str, answer: str):
